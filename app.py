@@ -24,7 +24,7 @@ SPREADSHEET_ID = "1qrtz-CNqzIpaWZlK_Z33cDY0P5lKiNqZcINyj1TEX8Y"
 # Hoja 1: donde se registran los pedidos
 pedidos_worksheet = client.open_by_key(SPREADSHEET_ID).worksheet("Pedidos")
 
-# Hoja 2: "Menú del Día"
+# Hoja 2: "Menú del Día" (aquí están todos los platos)
 menu_worksheet = client.open_by_key(SPREADSHEET_ID).worksheet("Menú del Día")
 
 # ========================================
@@ -33,8 +33,6 @@ menu_worksheet = client.open_by_key(SPREADSHEET_ID).worksheet("Menú del Día")
 def registrar_pedido(fecha, nombre, tipo_menu, plato, extra, acompanamiento, comentarios):
     """
     Inserta una nueva fila al final de 'pedidos_worksheet' con la información del pedido.
-    
-    La fila quedaría así:
     [fecha, nombre, tipo_menu, plato, extra, acompanamiento, comentarios]
     """
     pedidos_worksheet.append_row([
@@ -70,47 +68,50 @@ menu_data = menu_worksheet.get_all_records()
 hoy_str = datetime.now().strftime("%Y-%m-%d")
 menus_hoy = [item for item in menu_data if str(item["Fecha"]) == hoy_str]
 
-# Separamos los menús en categorías: Carne, Vegetariano, Extra, Acompañamiento, Menú del Día
-menus_carne = [m for m in menus_hoy if m["Tipo de menú"].strip().lower() == "carne"]
-menus_veggie = [m for m in menus_hoy if m["Tipo de menú"].strip().lower() == "vegetariano"]
+# Separamos los menús en categorías
 menus_extra = [m for m in menus_hoy if m["Tipo de menú"].strip().lower() == "extra"]
 menus_acomp = [m for m in menus_hoy if m["Tipo de menú"].strip().lower() == "acompañamiento"]
-# Para "Menú del día", buscamos cualquier tipo de menú que empiece con "menu del dia"
-menus_dia = [
-    m for m in menus_hoy 
-    if m["Tipo de menú"].strip().lower().startswith("menu del dia")
+
+# Unificamos Carne, Vegetariano y Menú del Día en un solo "Menú principal"
+# Regla: "Menú principal" = (Carne, Vegetariano, o cualquier "menu del dia...")
+menus_principal = [
+    m for m in menus_hoy
+    if (
+        m["Tipo de menú"].strip().lower() in ["carne", "vegetariano"]
+        or m["Tipo de menú"].strip().lower().startswith("menu del dia")
+    )
 ]
 
 # ================
 # 6. INTERFAZ MENÚ
 # ================
-st.subheader("Menú opción 1 (Carne)")
-if menus_carne:
-    opciones_carne = ["Ninguno"] + [
-        f"{m['Plato']} ($ {m['Precio']})" for m in menus_carne
-    ]
-else:
-    opciones_carne = ["No hay menús de carne hoy"]
-seleccion_carne = st.selectbox("Selecciona tu plato de carne", opciones_carne)
+# -- MENÚ PRINCIPAL (unificado) --
+st.subheader("Menú Principal")
+if menus_principal:
+    # Construimos dos listas paralelas: labels y data (para poder identificar el plato seleccionado)
+    opciones_principal_labels = ["Ninguno"]
+    opciones_principal_data = [None]
 
-st.subheader("Menú opción 2 (Vegetariano)")
-if menus_veggie:
-    opciones_veggie = ["Ninguno"] + [
-        f"{m['Plato']} ($ {m['Precio']})" for m in menus_veggie
-    ]
-else:
-    opciones_veggie = ["No hay menús vegetarianos hoy"]
-seleccion_veggie = st.selectbox("Selecciona tu plato vegetariano", opciones_veggie)
+    for item in menus_principal:
+        tipo = item["Tipo de menú"]
+        plato = item["Plato"]
+        precio = item["Precio"]
+        # Ejemplo de label: "Bife de carne ($ 4700) (Carne)"
+        label = f"{plato} ($ {precio}) ({tipo})"
+        opciones_principal_labels.append(label)
+        opciones_principal_data.append(item)
 
-st.subheader("Menú del Día")
-if menus_dia:
-    opciones_dia = ["Ninguno"] + [
-        f"{m['Plato']} ($ {m['Precio']})" for m in menus_dia
-    ]
 else:
-    opciones_dia = ["No hay menú del día hoy"]
-seleccion_dia = st.selectbox("Selecciona un menú del día", opciones_dia)
+    opciones_principal_labels = ["No hay menús principales para hoy"]
+    opciones_principal_data = [None]
 
+seleccion_principal = st.selectbox(
+    "Selecciona tu plato principal",
+    options=range(len(opciones_principal_labels)),
+    format_func=lambda i: opciones_principal_labels[i]
+)
+
+# -- EXTRAS --
 st.subheader("Extras")
 if menus_extra:
     opciones_extra = ["Ninguno"] + [
@@ -120,6 +121,7 @@ else:
     opciones_extra = ["No hay extras disponibles hoy"]
 seleccion_extra = st.selectbox("Selecciona un extra (opcional)", opciones_extra)
 
+# -- ACOMPAÑAMIENTOS --
 st.subheader("Acompañamientos")
 if menus_acomp:
     opciones_acomp = ["Ninguno"] + [
@@ -155,45 +157,31 @@ if st.button("Registrar Pedido"):
         st.error("Por favor, ingresa tu nombre.")
         st.stop()
 
-    # Determinamos qué plato final y tipo de menú se eligió
-    plato_final = ""
-    tipo_menu_final = ""
-
-    # Si no hay menús principales (carne, veggie, menú del día), y todo está en "Ninguno"...
-    if (
-        seleccion_carne in ["Ninguno", "No hay menús de carne hoy"] and
-        seleccion_veggie in ["Ninguno", "No hay menús vegetarianos hoy"] and
-        seleccion_dia in ["Ninguno", "No hay menú del día hoy"]
-    ):
-        st.error("No has seleccionado ningún menú principal (Carne, Vegetariano o Menú del Día).")
+    # Caso: no hay menús disponibles (o eligieron "Ninguno"/"No hay...")
+    if opciones_principal_labels[seleccion_principal] in [
+        "Ninguno", "No hay menús principales para hoy"
+    ]:
+        st.error("No has seleccionado ningún menú principal.")
         st.stop()
 
-    # Verificamos carne
-    if seleccion_carne not in ["Ninguno", "No hay menús de carne hoy"]:
-        plato_final += seleccion_carne
-        tipo_menu_final += "Carne "
+    # Obtenemos el diccionario completo del plato principal elegido
+    plato_dict = opciones_principal_data[seleccion_principal]
+    if not plato_dict:
+        st.error("Selección inválida. Intenta de nuevo.")
+        st.stop()
 
-    # Verificamos veggie
-    if seleccion_veggie not in ["Ninguno", "No hay menús vegetarianos hoy"]:
-        if plato_final:
-            plato_final += " / "
-            tipo_menu_final += " & "
-        plato_final += seleccion_veggie
-        tipo_menu_final += "Vegetariano"
+    # Extra y Acompañamiento
+    extra_final = ""
+    if seleccion_extra not in ["Ninguno", "No hay extras disponibles hoy"]:
+        extra_final = seleccion_extra
 
-    # Verificamos menú del día
-    if seleccion_dia not in ["Ninguno", "No hay menú del día hoy"]:
-        if plato_final:
-            plato_final += " / "
-            tipo_menu_final += " & "
-        plato_final += seleccion_dia
-        tipo_menu_final += "Menú del Día"
+    acomp_final = ""
+    if seleccion_acomp not in ["Ninguno", "No hay acompañamientos disponibles hoy"]:
+        acomp_final = seleccion_acomp
 
-    # Verificamos extra
-    extra_final = "" if seleccion_extra in ["Ninguno", "No hay extras disponibles hoy"] else seleccion_extra
-
-    # Verificamos acompañamiento
-    acomp_final = "" if seleccion_acomp in ["Ninguno", "No hay acompañamientos disponibles hoy"] else seleccion_acomp
+    # Extraemos datos del plato principal
+    tipo_menu_final = plato_dict["Tipo de menú"]
+    plato_final = f"{plato_dict['Plato']} ($ {plato_dict['Precio']})"
 
     # Guardamos la fecha actual
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
@@ -220,4 +208,3 @@ if pedidos:
     st.table(pedidos)
 else:
     st.write("No hay pedidos registrados aún.")
-
