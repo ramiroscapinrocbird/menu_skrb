@@ -56,7 +56,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🍴 Sistema de Pedidos - Menú de Lalaña 🍴")
+st.title("🍴 Sistema de Pedidos - SKRB 🍴")
 st.markdown(
     "Bienvenido al sistema de pedidos. Selecciona tus opciones favoritas y registra tu pedido fácilmente."
 )
